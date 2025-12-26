@@ -641,7 +641,8 @@ function cleanJsonSchema(schema) {
     minItems: "minItems",
     maxItems: "maxItems",
   };
-  const fieldsToRemove = ["$schema", "additionalProperties"];
+  const removeKeys = new Set(["$schema", "additionalProperties", "format", "default", "uniqueItems"]);
+  let constValue;
 
   const validations = [];
   for (const [field, label] of Object.entries(validationFields)) {
@@ -652,10 +653,13 @@ function cleanJsonSchema(schema) {
 
   const cleaned = {};
   for (const [key, value] of Object.entries(schema)) {
-    if (fieldsToRemove.includes(key) || key in validationFields) continue;
-    if (key === "format") continue;
-    if (key === "default") continue;
-    if (key === "uniqueItems") continue;
+    // Gemini Schema doesn't support JSON Schema "const"; map to enum([value]).
+    if (key === "const") {
+      constValue = value;
+      continue;
+    }
+
+    if (removeKeys.has(key) || key in validationFields) continue;
 
     // Normalize union types like ["string","null"] to a single type (prefer non-null)
     if (key === "type" && Array.isArray(value)) {
@@ -671,6 +675,10 @@ function cleanJsonSchema(schema) {
     } else {
       cleaned[key] = value;
     }
+  }
+
+  if (constValue !== undefined) {
+    cleaned.enum = [constValue];
   }
 
   if (validations.length > 0 && !cleaned.description) {
@@ -914,7 +922,7 @@ function transformClaudeRequestIn(claudeReq, projectId) {
           const toolDecl = {
             name: tool.name,
             description: tool.description,
-            parameters: uppercaseSchemaTypes(cleanJsonSchema(tool.input_schema)),
+            parameters: cleanJsonSchema(tool.input_schema),
           };
           tools[0].functionDeclarations.push(toolDecl);
         }

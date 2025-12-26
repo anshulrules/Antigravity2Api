@@ -16,10 +16,16 @@ function cleanSchema(schema) {
     maxItems: "maxItems",
   };
   const removeKeys = new Set(["$schema", "additionalProperties", "format", "default", "uniqueItems"]);
+  let constValue;
   const validations = [];
   const result = {};
 
   for (const [k, v] of Object.entries(schema)) {
+    // Gemini Schema doesn't support JSON Schema "const" keyword; map to enum([value]).
+    if (k === "const") {
+      constValue = v;
+      continue;
+    }
     if (k in validationFields) {
       validations.push(`${validationFields[k]}: ${v}`);
       continue;
@@ -32,16 +38,19 @@ function cleanSchema(schema) {
       continue;
     }
 
-    if (k === "description" && validations.length > 0) {
-      result[k] = `${v} (${validations.join(", ")})`;
-      continue;
-    }
-
     result[k] = typeof v === "object" && v !== null ? cleanSchema(v) : v;
   }
 
-  if (validations.length > 0 && !result.description) {
-    result.description = `Validation: ${validations.join(", ")}`;
+  if (constValue !== undefined) {
+    result.enum = [constValue];
+  }
+
+  if (validations.length > 0) {
+    if (result.description) {
+      result.description = `${result.description} (${validations.join(", ")})`;
+    } else {
+      result.description = `Validation: ${validations.join(", ")}`;
+    }
   }
 
   return result;
