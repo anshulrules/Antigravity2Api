@@ -19,16 +19,6 @@
         </div>
       </header>
 
-      <section id="updateBanner" class="card update-banner hidden">
-        <div class="update-banner-row">
-          <div id="updateText" class="hint"></div>
-          <div class="update-banner-actions">
-            <a id="updateLink" class="btn small primary" href="#" target="_blank" rel="noreferrer">前往更新</a>
-            <button id="updateDismiss" class="btn small ghost">忽略</button>
-          </div>
-        </div>
-      </section>
-
       <section class="card">
         <h2>访问控制</h2>
         <p class="hint">
@@ -92,10 +82,14 @@
       </section>
 
       <footer class="footer">
-        <div class="hint mono" id="versionInfo"></div>
-        <div class="hint">
-          API 仍然保持原有路径：Claude <code>/v1/messages</code>，Gemini <code>/v1beta</code>。
+        <div id="versionBar" class="versionBar">
+          <span id="versionLocal" class="hint mono"></span>
+          <span id="versionUpdate" class="hint"></span>
         </div>
+        <span class="hint">
+
+          API 仍然保持原有路径：Claude <code>/v1/messages</code>，Gemini <code>/v1beta</code>。
+        </span>
       </footer>
     </div>
 

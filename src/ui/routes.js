@@ -2,9 +2,93 @@ const fs = require("fs/promises");
 const path = require("path");
 
 const UI_DIR = __dirname;
-const pkg = require("../../package.json");
+const VERSION_CACHE_TTL_MS = 10 * 60 * 1000;
 
-let remoteVersionCache = { ts: 0, payload: null };
+let cachedPackageJson = null;
+let versionCache = { ts: 0, payload: null };
+
+function getUpdateRepo() {
+  const raw = process.env.AG2API_UPDATE_REPO;
+  const repo = typeof raw === "string" ? raw.trim() : "";
+  return repo || "znlsl/Antigravity2Api";
+}
+
+async function getLocalPackageJson() {
+  if (cachedPackageJson) return cachedPackageJson;
+  try {
+    const candidates = [
+      path.resolve(process.cwd(), "package.json"),
+      path.resolve(__dirname, "..", "..", "package.json"),
+    ];
+    for (const pkgPath of candidates) {
+      try {
+        const text = await fs.readFile(pkgPath, "utf8");
+        cachedPackageJson = JSON.parse(text);
+        break;
+      } catch (_) {}
+    }
+    if (!cachedPackageJson) cachedPackageJson = {};
+  } catch (_) {
+    cachedPackageJson = {};
+  }
+  return cachedPackageJson;
+}
+
+async function fetchLatestGithubRelease(repo) {
+  const url = `https://api.github.com/repos/${repo}/releases/latest`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  const res = await fetch(url, {
+    signal: controller.signal,
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "Antigravity2Api",
+    },
+  }).finally(() => clearTimeout(timer));
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`GitHub ${res.status}: ${text || res.statusText || "Request failed"}`);
+  }
+  const json = await res.json();
+  return {
+    tag_name: json?.tag_name || null,
+    name: json?.name || null,
+    html_url: json?.html_url || null,
+    published_at: json?.published_at || null,
+  };
+}
+
+async function getVersionPayload() {
+  const now = Date.now();
+  if (versionCache.payload && now - versionCache.ts < VERSION_CACHE_TTL_MS) {
+    return versionCache.payload;
+  }
+
+  const pkg = await getLocalPackageJson();
+  const repo = getUpdateRepo();
+
+  let latest = null;
+  let error = null;
+  try {
+    latest = await fetchLatestGithubRelease(repo);
+  } catch (e) {
+    error = e?.message || String(e);
+  }
+
+  const payload = {
+    local: {
+      name: typeof pkg?.name === "string" ? pkg.name : null,
+      version: typeof pkg?.version === "string" ? pkg.version : null,
+    },
+    latest,
+    repo,
+    checked_at: new Date(now).toISOString(),
+    error,
+  };
+
+  versionCache = { ts: now, payload };
+  return payload;
+}
 
 function contentTypeFor(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -37,32 +121,6 @@ async function serveFile(filePath) {
   };
 }
 
-function encodeGithubPathRef(ref) {
-  // Keep "/" for branch names like "feature/foo".
-  return encodeURIComponent(ref).replace(/%2F/g, "/");
-}
-
-async function fetchRemotePackageJson({ repo, branch }) {
-  const rawUrl = `https://raw.githubusercontent.com/${repo}/${encodeGithubPathRef(branch)}/package.json`;
-  try {
-    const res = await fetch(rawUrl, { cache: "no-store" });
-    if (res.ok) return await res.json();
-  } catch (e) {}
-
-  // Fallback: GitHub API (base64 content)
-  const apiUrl = `https://api.github.com/repos/${repo}/contents/package.json?ref=${encodeURIComponent(branch)}`;
-  const res = await fetch(apiUrl, {
-    cache: "no-store",
-    headers: { Accept: "application/vnd.github+json" },
-  });
-  if (!res.ok) return null;
-  const payload = await res.json().catch(() => null);
-  const content = payload && typeof payload.content === "string" ? payload.content : null;
-  if (!content) return null;
-  const decoded = Buffer.from(content.replace(/\s+/g, ""), "base64").toString("utf8");
-  return JSON.parse(decoded);
-}
-
 async function handleUiRoute(req, parsedUrl) {
   const pathname = parsedUrl.pathname;
 
@@ -70,59 +128,8 @@ async function handleUiRoute(req, parsedUrl) {
     return { status: 204, headers: {}, body: "" };
   }
 
-  if (pathname === "/ui/meta.json" && req.method === "GET") {
-    const repo =
-      process.env.AG2API_UPDATE_REPO ||
-      process.env.AG2API_GITHUB_REPO ||
-      "znlsl/antigravity2api";
-    const branch = process.env.AG2API_UPDATE_BRANCH || "main";
-    return {
-      status: 200,
-      headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
-      body: JSON.stringify({
-        name: pkg.name || "antigravity2api",
-        version: pkg.version || "0.0.0",
-        repo,
-        branch,
-        homepage: `https://github.com/${repo}`,
-      }),
-    };
-  }
-
-  if (pathname === "/ui/update.json" && req.method === "GET") {
-    const repo =
-      process.env.AG2API_UPDATE_REPO ||
-      process.env.AG2API_GITHUB_REPO ||
-      "znlsl/antigravity2api";
-    const branch = process.env.AG2API_UPDATE_BRANCH || "main";
-
-    // Cache for 10 minutes (best-effort).
-    const now = Date.now();
-    if (remoteVersionCache.payload && now - remoteVersionCache.ts < 10 * 60 * 1000) {
-      return {
-        status: 200,
-        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
-        body: JSON.stringify(remoteVersionCache.payload),
-      };
-    }
-
-    let remoteVersion = null;
-    try {
-      const remotePkg = await fetchRemotePackageJson({ repo, branch });
-      remoteVersion = remotePkg && typeof remotePkg.version === "string" ? remotePkg.version : null;
-    } catch (e) {
-      remoteVersion = null;
-    }
-
-    const payload = {
-      repo,
-      branch,
-      version: remoteVersion,
-      homepage: `https://github.com/${repo}`,
-    };
-
-    remoteVersionCache = { ts: now, payload };
-
+  if (pathname === "/ui/version" && req.method === "GET") {
+    const payload = await getVersionPayload();
     return {
       status: 200,
       headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },

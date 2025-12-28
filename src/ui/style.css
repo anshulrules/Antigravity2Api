@@ -203,27 +203,21 @@ h2 {
   text-align: center;
 }
 
-.hidden {
-  display: none;
-}
-
-.update-banner {
-  border-color: rgba(34, 197, 94, 0.35);
-  background: rgba(34, 197, 94, 0.06);
-}
-
-.update-banner-row {
+.versionBar {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  justify-content: center;
+  gap: 10px;
   flex-wrap: wrap;
+  margin-bottom: 8px;
 }
 
-.update-banner-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.versionBar a {
+  color: rgba(147, 197, 253, 0.95);
+  text-decoration: none;
+}
+
+.versionBar a:hover {
+  text-decoration: underline;
 }
 
 code {

@@ -82,6 +82,7 @@ AG2API_PROXY_URL=
 AG2API_DEBUG=false
 AG2API_LOG_RETENTION_DAYS=3
 AG2API_SWITCH_TO_MCP_MODEL=
+AG2API_UPDATE_REPO=znlsl/Antigravity2Api
 ```
 
 **配置项说明：**
@@ -94,8 +95,7 @@ AG2API_SWITCH_TO_MCP_MODEL=
 - `AG2API_DEBUG`：是否开启 debug（true/false）
 - `AG2API_LOG_RETENTION_DAYS`：日志保留天数（默认 3；设为 0 表示不自动清理）
 - `AG2API_SWITCH_TO_MCP_MODEL`：MCP 折中方案开关；为空/不配置表示关闭，配置为 `gemini-*`（如 `gemini-3-flash`）表示在检测到 `AG2API_SWITCH_TO_MCP_MODEL` 信号或 `mcp__*` 工具调用时自动切换并重试
-- `AG2API_UPDATE_REPO`：管理界面版本检查的 GitHub 仓库（默认 `znlsl/antigravity2api`）
-- `AG2API_UPDATE_BRANCH`：管理界面版本检查的分支（默认 `main`）
+- `AG2API_UPDATE_REPO`：管理界面版本检查的 GitHub 仓库（默认 `znlsl/Antigravity2Api`，用于获取 latest release）
 
 Google OAuth Client（可选覆盖）：
 
@@ -130,6 +130,7 @@ npm run add
 - 查看已加载账号（脱敏信息）
 - OAuth 添加账号（写入 `auths/*.json`）
 - 删除账号（删除对应 `auths/*.json`）
+- 版本更新提醒：页面底部会显示本地版本，并尝试从 GitHub latest release 获取最新版本；如发现更新会提示跳转到 Release 页面（网络不可用/被墙时会自动忽略）
 
 如果你设置了 `AG2API_API_KEYS`，页面会要求你输入 Key 才能调用管理接口（Key 仅保存在浏览器本地）。
 
@@ -193,10 +194,16 @@ docker run -d --name antigravity2api \
 
 ### 6.3 GitHub Actions 自动构建 GHCR 镜像
 
-已提供工作流：`.github/workflows/docker-ghcr.yml`，每次 push 到 `main` 会自动构建并推送：
+已提供工作流：`.github/workflows/release.yml`：
+
+- 每次 push 到 `main` 会自动构建并推送：
 
 - `ghcr.io/znlsl/antigravity2api:latest`
 - 平台：`linux/amd64` + `linux/arm64`（multi-arch）
+
+- 每次 push tag（任意 tag，例如 `v1.2.3` / `2025.12.27-t020612`）会自动：
+  - 创建 GitHub Release（自动生成 Release Notes）
+  - 构建并推送镜像：`ghcr.io/znlsl/antigravity2api:<tag>` + `:latest`
 
 ### 6.4 服务器更新镜像（升级）
 

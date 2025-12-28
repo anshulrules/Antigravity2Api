@@ -1,22 +1,17 @@
 (function () {
   const $ = (id) => document.getElementById(id);
 
-	  const els = {
-	    apiKey: $("apiKey"),
-	    btnSaveKey: $("btnSaveKey"),
-	    btnClearKey: $("btnClearKey"),
-	    keyStatus: $("keyStatus"),
-	    btnReload: $("btnReload"),
-	    btnAdd: $("btnAdd"),
-	    versionInfo: $("versionInfo"),
-	    updateBanner: $("updateBanner"),
-	    updateText: $("updateText"),
-	    updateLink: $("updateLink"),
-	    updateDismiss: $("updateDismiss"),
-	    oauthStatus: $("oauthStatus"),
-	    oauthUrl: $("oauthUrl"),
-	    oauthState: $("oauthState"),
-	    btnCopyUrl: $("btnCopyUrl"),
+  const els = {
+    apiKey: $("apiKey"),
+    btnSaveKey: $("btnSaveKey"),
+    btnClearKey: $("btnClearKey"),
+    keyStatus: $("keyStatus"),
+    btnReload: $("btnReload"),
+    btnAdd: $("btnAdd"),
+    oauthStatus: $("oauthStatus"),
+    oauthUrl: $("oauthUrl"),
+    oauthState: $("oauthState"),
+    btnCopyUrl: $("btnCopyUrl"),
     oauthPaste: $("oauthPaste"),
     btnSubmitCallback: $("btnSubmitCallback"),
     accountsBody: $("accountsBody"),
@@ -24,6 +19,9 @@
     quotaModal: $("quotaModal"),
     quotaClose: $("quotaClose"),
     quotaBody: $("quotaBody"),
+    versionBar: $("versionBar"),
+    versionLocal: $("versionLocal"),
+    versionUpdate: $("versionUpdate"),
   };
 
   const state = {
@@ -107,82 +105,8 @@
       err.data = data;
       throw err;
     }
-	    return data;
-	  }
-
-	  function normalizeVersion(raw) {
-	    return String(raw || "")
-	      .trim()
-	      .replace(/^v/i, "");
-	  }
-
-	  function compareVersions(a, b) {
-	    const va = normalizeVersion(a);
-	    const vb = normalizeVersion(b);
-
-	    const dateRe = /^\d{4}\.\d{2}\.\d{2}-t\d{6}$/;
-	    if (dateRe.test(va) && dateRe.test(vb)) {
-	      if (va > vb) return 1;
-	      if (va < vb) return -1;
-	      return 0;
-	    }
-
-	    // Fallback: basic semver-ish numeric compare (major.minor.patch).
-	    const pa = va.split(".").map((x) => Number.parseInt(x, 10));
-	    const pb = vb.split(".").map((x) => Number.parseInt(x, 10));
-	    if (pa.length < 1 || pb.length < 1 || pa.some(Number.isNaN) || pb.some(Number.isNaN)) return 0;
-	    const len = Math.max(pa.length, pb.length);
-	    for (let i = 0; i < len; i++) {
-	      const ai = pa[i] ?? 0;
-	      const bi = pb[i] ?? 0;
-	      if (ai > bi) return 1;
-	      if (ai < bi) return -1;
-	    }
-	    return 0;
-	  }
-
-	  function showUpdateBanner({ text, link, updateId }) {
-	    if (!els.updateBanner) return;
-	    const dismissed = localStorage.getItem("update_dismissed_id") || "";
-	    if (dismissed && updateId && dismissed === updateId) return;
-
-	    if (els.updateText) els.updateText.textContent = text || "发现更新";
-	    if (els.updateLink) els.updateLink.href = link || "#";
-
-	    els.updateBanner.classList.remove("hidden");
-
-	    if (els.updateDismiss) {
-	      els.updateDismiss.onclick = () => {
-	        if (updateId) localStorage.setItem("update_dismissed_id", updateId);
-	        els.updateBanner.classList.add("hidden");
-	      };
-	    }
-	  }
-
-	  async function initVersionCheck() {
-	    if (!els.versionInfo) return;
-	    try {
-	      const meta = await apiFetch("/ui/meta.json", { method: "GET" });
-	      const name = meta?.name || "antigravity2api";
-	      const localVersion = meta?.version || "0.0.0";
-	      const homepage = meta?.homepage || "";
-
-	      els.versionInfo.textContent = `${name} v${localVersion}`;
-
-	      const remote = await apiFetch("/ui/update.json", { method: "GET" });
-	      const remoteVersion = remote?.version;
-	      if (remoteVersion && compareVersions(remoteVersion, localVersion) > 0) {
-	        const link = homepage ? `${homepage}/commits/${remote?.branch || "main"}` : "#";
-	        showUpdateBanner({
-	          text: `发现新版本 v${normalizeVersion(remoteVersion)}（当前 v${normalizeVersion(localVersion)}）`,
-	          link,
-	          updateId: String(remoteVersion),
-	        });
-	      }
-	    } catch (e) {
-	      // ignore update check errors
-	    }
-	  }
+    return data;
+  }
 
   function formatExpiry(expiryDateMs) {
     if (!expiryDateMs) return "-";
@@ -231,7 +155,7 @@
       expTd.textContent = formatExpiry(acc.expiry_date);
 
       const actTd = document.createElement("td");
-      
+
       const quotaBtn = document.createElement("button");
       quotaBtn.className = "btn small";
       quotaBtn.style.marginRight = "6px";
@@ -463,8 +387,97 @@
     });
   }
 
-	  loadApiKey();
-	  bindEvents();
-	  refreshAccounts();
-	  initVersionCheck();
-	})();
+  function normalizeVersion(value) {
+    return String(value || "")
+      .trim()
+      .replace(/^v/i, "");
+  }
+
+  function parseDateVersionKey(value) {
+    const v = normalizeVersion(value);
+    const m = /^(\d{4})\.(\d{2})\.(\d{2})-t(\d{6})$/.exec(v);
+    if (!m) return null;
+    return `${m[1]}${m[2]}${m[3]}${m[4]}`;
+  }
+
+  function parseSemverParts(value) {
+    const v = normalizeVersion(value);
+    const m = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(v);
+    if (!m) return null;
+    return [Number(m[1]), Number(m[2]), Number(m[3])];
+  }
+
+  function compareVersionStrings(localVersion, latestVersion) {
+    const localKey = parseDateVersionKey(localVersion);
+    const latestKey = parseDateVersionKey(latestVersion);
+    if (localKey && latestKey) {
+      if (latestKey === localKey) return 0;
+      return latestKey > localKey ? 1 : -1;
+    }
+
+    const localSemver = parseSemverParts(localVersion);
+    const latestSemver = parseSemverParts(latestVersion);
+    if (localSemver && latestSemver) {
+      for (let i = 0; i < 3; i++) {
+        if (latestSemver[i] !== localSemver[i]) return latestSemver[i] > localSemver[i] ? 1 : -1;
+      }
+      return 0;
+    }
+
+    const a = normalizeVersion(localVersion);
+    const b = normalizeVersion(latestVersion);
+    if (!a || !b) return null;
+    return a === b ? 0 : null;
+  }
+
+  function renderVersionInfo(payload) {
+    if (!els.versionLocal || !els.versionUpdate) return;
+
+    const localVersion = payload?.local?.version || "-";
+    const repo = payload?.repo || "znlsl/Antigravity2Api";
+    const latestTag = payload?.latest?.tag_name || null;
+    const latestUrl = payload?.latest?.html_url || `https://github.com/${repo}/releases/latest`;
+
+    els.versionLocal.textContent = `本地版本：${localVersion}`;
+
+    els.versionUpdate.textContent = "";
+    els.versionUpdate.innerHTML = "";
+
+    if (!latestTag) return;
+
+    const cmp = compareVersionStrings(localVersion, latestTag);
+    const updateAvailable = cmp == null ? normalizeVersion(localVersion) !== normalizeVersion(latestTag) : cmp > 0;
+    if (!updateAvailable) return;
+
+    const prefix = document.createElement("span");
+    prefix.textContent = "发现新版本：";
+
+    const link = document.createElement("a");
+    link.href = latestUrl;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = latestTag;
+
+    els.versionUpdate.appendChild(prefix);
+    els.versionUpdate.appendChild(link);
+  }
+
+  async function refreshVersionInfo() {
+    if (!els.versionBar || !els.versionLocal || !els.versionUpdate) return;
+    els.versionLocal.textContent = "本地版本：加载中...";
+    els.versionUpdate.textContent = "";
+    try {
+      const res = await fetch("/ui/version", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) return;
+      renderVersionInfo(data);
+    } catch (e) {
+      // Ignore version check errors (offline / proxy / rate-limit), UI should still work.
+    }
+  }
+
+  loadApiKey();
+  bindEvents();
+  refreshAccounts();
+  refreshVersionInfo();
+})();
