@@ -43,6 +43,12 @@ function buildMcpSwitchModelHint(claudeReq) {
 function maybeInjectMcpHintIntoSystemText({ text, claudeReq, isClaudeModel, injected }) {
   if (!isMcpSwitchEnabled()) return { text, injected };
   if (!isClaudeModel) return { text, injected };
+  // 如果本轮上游模型已经是 gemini（例如 gemini-3-flash / gemini-3-flash-preview），
+  // 就不应该再注入“输出切换信号”的提示词（否则会导致 gemini 也被强制只输出 MCP_SWITCH_SIGNAL）。
+  const rawModel = typeof claudeReq?.model === "string" ? claudeReq.model.trim() : "";
+  if (rawModel.startsWith("gemini-") || rawModel.startsWith("models/gemini-")) {
+    return { text, injected };
+  }
   if (!hasMcpTools(claudeReq)) return { text, injected };
   if (typeof text !== "string" || !text.includes("mcp__")) return { text, injected };
 

@@ -15,7 +15,15 @@ function cleanSchema(schema) {
     minItems: "minItems",
     maxItems: "maxItems",
   };
-  const removeKeys = new Set(["$schema", "additionalProperties", "format", "default", "uniqueItems"]);
+  const removeKeys = new Set([
+    "$schema",
+    "additionalProperties",
+    "format",
+    "default",
+    "uniqueItems",
+    // v1internal Schema doesn't support JSON Schema draft keywords like `propertyNames`.
+    "propertyNames",
+  ]);
   let constValue;
   const validations = [];
   const result = {};

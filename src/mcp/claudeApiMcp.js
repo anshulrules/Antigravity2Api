@@ -224,11 +224,13 @@ function prepareMcpContext({ requestData, sessionMcpState, mcpModel, inferFinalM
   const sessionState = ensureSessionState(sessionMcpState, requestData);
 
   const baseModel = inferClaudeCodeModelFromSystem(requestData) || requestData.model;
-  const isToolResultTurn = hasAnyToolResultTurn(requestData);
   const isMcpResultTurn = isMcpToolResultTurn(requestData, sessionState);
   const upstreamRequest = { ...requestData, model: isMcpResultTurn ? mcpModel : baseModel };
   const shouldBufferForSwitch =
-    !!requestData.stream && !isToolResultTurn && hasMcpTools(requestData) && String(mapClaudeModelToGemini(baseModel)).startsWith("claude");
+    !!requestData.stream &&
+    !isMcpResultTurn &&
+    hasMcpTools(requestData) &&
+    String(mapClaudeModelToGemini(baseModel)).startsWith("claude");
 
   const modelForQuota = isMcpResultTurn ? mcpModel : inferFinalModelForQuota({ ...requestData, model: baseModel });
 
